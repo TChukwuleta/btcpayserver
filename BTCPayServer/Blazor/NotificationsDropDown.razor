@@ -37,7 +37,7 @@
 			<div id="NotificationsList" v-pre>
 				@foreach (var n in Last5)
 				{
-					<a href="@NotificationUrl(n.Id)" class="notification d-flex align-items-center dropdown-item border-bottom border-light py-3 px-4">
+                    <a href="@NotificationUrl(n.Id)" class="notification d-flex align-items-center dropdown-item border-bottom border-light py-3 px-4" @key="@n.Id">
 						<div class="me-3">
 							<Icon Symbol="@NotificationIcon(n.Identifier)" />
 						</div>
@@ -61,80 +61,82 @@
 </div>
 
 @code {
-	string NotificationsUrl => _LinkGenerator.GetPathByAction("Index", "UINotifications", pathBase: _BTCPayServerOptions.RootPath);
-	string NotificationUrl(string notificationId) => _LinkGenerator.GetPathByAction("NotificationPassThrough", "UINotifications", values: new { id = notificationId }, pathBase: _BTCPayServerOptions.RootPath);
-	string UnseenCount;
-	List<NotificationViewModel> Last5;
-	IDisposable _EventAggregatorListener;
-	protected override void OnInitialized()
-	{
-		if (_JSRuntime.IsPreRendering())
-			return;
-		_EventAggregatorListener = _EventAggregator.Subscribe<UserNotificationsUpdatedEvent>((s, evt) =>
-		{
-			_ = InvokeAsync(async () =>
-			{
-				if (await GetUserId() is string userId)
-				{
-					var res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: false);
-					UpdateState(res);
-					StateHasChanged();
-				}
-			});
-		});
-	}
+    string NotificationsUrl => _LinkGenerator.GetPathByAction("Index", "UINotifications", pathBase: _BTCPayServerOptions.RootPath);
+    string NotificationUrl(string notificationId) => _LinkGenerator.GetPathByAction("NotificationPassThrough", "UINotifications", values: new { id = notificationId }, pathBase: _BTCPayServerOptions.RootPath);
+    string UnseenCount;
+    List<NotificationViewModel> Last5;
+    IDisposable _EventAggregatorListener;
+    protected override void OnInitialized()
+    {
+        if (_JSRuntime.IsPreRendering())
+            return;
+        _EventAggregatorListener = _EventAggregator.Subscribe<UserNotificationsUpdatedEvent>((s, evt) =>
+        {
+            _ = InvokeAsync(async () =>
+            {
+                if (await GetUserId() is string userId)
+                {
+                    var res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: false);
+                    UpdateState(res);
+                    StateHasChanged();
+                }
+            });
+        });
+    }
 
-	public void Dispose() => _EventAggregatorListener?.Dispose();
+    public void Dispose() => _EventAggregatorListener?.Dispose();
 
     static string SeenCount(int? count)
-	{
-		if (count is not int c)
-			return "0";
-		if (c >= NotificationManager.MaxUnseen)
-			return $"{NotificationManager.MaxUnseen - 1}+";
-		return c.ToString();
-	}
+    {
+        if (count is not int c)
+            return "0";
+        if (c >= NotificationManager.MaxUnseen)
+            return $"{NotificationManager.MaxUnseen - 1}+";
+        return c.ToString();
+    }
 
-	void UpdateState((List<NotificationViewModel> Items, int? Count) res)
-	{
-		UnseenCount = SeenCount(res.Count);
-		Last5 = res.Items;
-	}
+    void UpdateState((List<NotificationViewModel> Items, int? Count) res)
+    {
+        UnseenCount = SeenCount(res.Count);
+        Last5 = res.Items;
+        StateHasChanged();
+    }
 
-	protected override async Task OnParametersSetAsync()
-	{
-		if (await GetUserId() is string userId)
-		{
-			// For prerendering and first rendering, always use the cached value
-			var res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: true);
-			// If we forget to update the state here, the UI will flicker.
-			// Because the first rendering will think there is 0 events, until the DB call ends and the second rendering happens.
-			// By updating the state here, the first rendering will show the cached value until the second rendering happens
-			UpdateState(res);
-			// We don't want to block the pre-rendering, so we will render again when the costly request is over
-			if (!_JSRuntime.IsPreRendering())
-			{
-				res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: false);
-				UpdateState(res);
-			}
-		}
-	}
+    protected override async Task OnParametersSetAsync()
+    {
+        if (await GetUserId() is string userId)
+        {
+            // For prerendering and first rendering, always use the cached value
+            var res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: true);
+            // If we forget to update the state here, the UI will flicker.
+            // Because the first rendering will think there is 0 events, until the DB call ends and the second rendering happens.
+            // By updating the state here, the first rendering will show the cached value until the second rendering happens
+            UpdateState(res);
+            // We don't want to block the pre-rendering, so we will render again when the costly request is over
+            if (!_JSRuntime.IsPreRendering())
+            {
+                res = await _NotificationManager.GetSummaryNotifications(userId, cachedOnly: false);
+                UpdateState(res);
+            }
+        }
+    }
 
-	async Task<string> GetUserId()
-	{
-		var state = await _AuthenticationStateProvider.GetAuthenticationStateAsync();
-		if (!state.User.Identity.IsAuthenticated)
-			return null;
-		return _UserManager.GetUserId(state.User);
-	}
+    async Task<string> GetUserId()
+    {
+        var state = await _AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (!state.User.Identity.IsAuthenticated)
+            return null;
+        return _UserManager.GetUserId(state.User);
+    }
 
     private async Task MarkAllAsSeen()
-	{
-		if (await GetUserId() is string userId)
-		{
-			await _NotificationManager.ToggleSeen(new NotificationsQuery() { Seen = false, UserId = userId }, true);
-			UnseenCount = "0";
-		}
+    {
+        if (await GetUserId() is string userId)
+        {
+            await _NotificationManager.ToggleSeen(new NotificationsQuery() { Seen = false, UserId = userId }, true);
+            UnseenCount = "0";
+            StateHasChanged();
+        }
 	}
 
 	private static string NotificationIcon(string type)
