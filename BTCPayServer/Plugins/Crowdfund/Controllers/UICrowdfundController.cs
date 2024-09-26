@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Abstractions.Form;
 using BTCPayServer.Client;
@@ -43,6 +44,7 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
             CurrencyNameTable currencies,
             EventAggregator eventAggregator,
             UriResolver uriResolver,
+            IFileService fileService,
             StoreRepository storeRepository,
             UIInvoiceController invoiceController,
             UserManager<ApplicationUser> userManager,
@@ -51,6 +53,7 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
         {
             _currencies = currencies;
             _appService = appService;
+            _fileService = fileService;
             _userManager = userManager;
             _app = app;
             _storeRepository = storeRepository;
@@ -65,6 +68,7 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
         private readonly CurrencyNameTable _currencies;
         private readonly StoreRepository _storeRepository;
         private readonly AppService _appService;
+        private readonly IFileService _fileService;
         private readonly UIInvoiceController _invoiceController;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly CrowdfundAppType _app;
@@ -434,8 +438,14 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
 
         [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
         [HttpPost("{appId}/settings/crowdfund")]
-        public async Task<IActionResult> UpdateCrowdfund(string appId, UpdateCrowdfundViewModel vm, string command)
+        public async Task<IActionResult> UpdateCrowdfund(string appId, UpdateCrowdfundViewModel vm,
+            [FromForm] bool RemoveLogoFile,
+            [FromForm] string command)
         {
+            var userId = GetUserId();
+            if (userId is null)
+                return NotFound();
+
             var app = GetCurrentApp();
             if (app == null)
                 return NotFound();
@@ -510,6 +520,7 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
 
             app.Name = vm.AppName;
             app.Archived = vm.Archived;
+
             var newSettings = new CrowdfundSettings
             {
                 Title = vm.Title,
@@ -520,13 +531,13 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
                 Description = vm.Description,
                 EndDate = vm.EndDate?.ToUniversalTime(),
                 TargetAmount = vm.TargetAmount,
-                MainImageUrl = vm.MainImageUrl,
                 NotificationUrl = vm.NotificationUrl,
                 Tagline = vm.Tagline,
                 PerksTemplate = vm.PerksTemplate,
                 DisqusEnabled = vm.DisqusEnabled,
                 SoundsEnabled = vm.SoundsEnabled,
                 DisqusShortname = vm.DisqusShortname,
+                MainImageUrl = app.GetSettings<CrowdfundSettings>()?.MainImageUrl,
                 AnimationsEnabled = vm.AnimationsEnabled,
                 ResetEveryAmount = vm.ResetEveryAmount,
                 ResetEvery = Enum.Parse<CrowdfundResetEvery>(vm.ResetEvery),
@@ -537,6 +548,22 @@ namespace BTCPayServer.Plugins.Crowdfund.Controllers
                 AnimationColors = parsedAnimationColors,
                 FormId = vm.FormId
             };
+
+            if (vm.MainImageFile != null)
+            {
+                var imageUpload = await _fileService.UploadImage(vm.MainImageFile, userId);
+                if (!imageUpload.success)
+                {
+                    ModelState.AddModelError(nameof(vm.MainImageFile), imageUpload.response);
+                }
+                newSettings.MainImageUrl = await _uriResolver.Resolve(Request.GetAbsoluteRootUri(), new UnresolvedUri.FileIdUri(imageUpload.file.Id));
+            }
+            else if (RemoveLogoFile)
+            {
+                newSettings.MainImageUrl = null;
+                vm.MainImageUrl = null;
+                vm.MainImageFile = null;
+            }
 
             app.TagAllInvoices = vm.UseAllStoreInvoices;
             app.SetSettings(newSettings);

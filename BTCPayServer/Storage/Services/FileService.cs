@@ -11,12 +11,14 @@ using System.Web;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Configuration;
+using BTCPayServer.Events;
 using BTCPayServer.Services;
 using BTCPayServer.Storage.Models;
 using BTCPayServer.Storage.Services.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
+using NBitcoin.Protocol;
 
 namespace BTCPayServer.Storage.Services
 {
@@ -45,6 +47,29 @@ namespace BTCPayServer.Storage.Services
         {
             var settings = await _settingsRepository.GetSettingAsync<StorageSettings>();
             return settings is not null;
+        }
+
+        public async Task<(bool success, string response, IStoredFile file)> UploadImage(IFormFile file, string userId)
+        {
+            if (file.Length > 1_000_000)
+                return (false, "The uploaded logo file should be less than 1MB", null);
+
+            if (!file.ContentType.StartsWith("image/", StringComparison.InvariantCulture))
+                return (false, "The uploaded logo file needs to be an image (based on content type)", null);
+
+            var formFile = await file.Bufferize();
+            if (!FileTypeDetector.IsPicture(formFile.Buffer, formFile.FileName))
+                return (false, "The uploaded logo file needs to be an image (based on file content)", null);
+
+            try
+            {
+                var storedFile = await AddFile(formFile, userId);
+                return (true, "File uploaded successfully", storedFile);
+            }
+            catch (Exception e)
+            {
+                return (false, $"Could not save logo: {e.Message}", null);
+            }
         }
 
         public async Task<IStoredFile> AddFile(IFormFile file, string userId)
