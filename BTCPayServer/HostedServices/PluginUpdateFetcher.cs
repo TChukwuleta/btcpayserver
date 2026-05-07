@@ -80,6 +80,7 @@ namespace BTCPayServer.HostedServices
 
             var installedPlugins = pluginService.Installed;
             var remotePlugins = await pluginService.GetRemotePlugins(null, cancellationToken);
+            _ = pluginService.ReportInstalledPlugins(cancellationToken);
             //take the latest version of each plugin
             var remotePluginsList = remotePlugins
                 .GroupBy(plugin => plugin.Identifier)

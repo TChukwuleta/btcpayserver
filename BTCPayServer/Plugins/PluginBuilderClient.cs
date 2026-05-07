@@ -94,6 +94,17 @@ namespace BTCPayServer.Plugins
                    ?? throw new InvalidOperationException();
         }
 
+        public async Task ReportInstalledPlugins(IEnumerable<InstalledPluginRequest> plugins, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var json = JsonConvert.SerializeObject(plugins, serializerSettings);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var resp = await _httpClient.PostAsync("api/v1/telemetry/plugins", content, cancellationToken);
+            }
+            catch{ }
+        }
+
         public async Task<PublishedVersion[]> GetInstalledPluginsUpdates(
             string btcpayVersion,
             bool includePreRelease,

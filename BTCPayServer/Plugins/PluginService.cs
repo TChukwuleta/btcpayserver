@@ -54,6 +54,15 @@ namespace BTCPayServer.Plugins
 
         private string GetShortBtcpayVersion() => Env.Version.TrimStart('v').Split('+')[0];
 
+        public async Task ReportInstalledPlugins(CancellationToken cancellationToken = default)
+        {
+            var plugins = Installed.Select(p => new InstalledPluginRequest(p.Key, p.Value.ToString())).ToList();
+            if (plugins.Count == 0)
+                return;
+
+            await _pluginBuilderClient.ReportInstalledPlugins(plugins, cancellationToken);
+        }
+
         public async Task<AvailablePlugin[]> GetRemotePlugins(string searchPluginName, CancellationToken cancellationToken = default)
         {
             string btcpayVersion = GetShortBtcpayVersion();
